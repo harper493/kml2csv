@@ -14,7 +14,7 @@
 # -d - add computed values for delta time, delta distance, rate of turn, vertical speed,
 #      instantaneous vertical speed (default)
 # -r - do not add computed values
-# -s n - smooth computed values over last n sample, default is 10
+# -s n - smooth computed values over last n samples, default is 10
 #
 # Copyright, License, etc
 # -----------------------
@@ -38,9 +38,9 @@ default_samples = 10
 
 class placemark(object) :
 
-    fields = ( 'time', 'timestamp', 'latitude', 'longitude', 'altitude', 'heading', 'speed' )
+    base_fields = ( 'time', 'timestamp', 'latitude', 'longitude', 'altitude', 'heading', 'speed' )
     delta_fields = ( 'delta_t', 'delta_s', 'cspeed', 'rot', 'vspeed', 'inst_vspeed' )
-    all_fields = fields + delta_fields
+    all_fields = base_fields + delta_fields
     field_formats = { 'delta_s' : '%.3f',
                       'cspeed' : '%.1f',
                       'rot' : '%.2f',
@@ -64,12 +64,11 @@ class placemark(object) :
     def do_delta(self, new_prev, samples) :
         self.delta_t = self.timestamp - new_prev.timestamp
         placemark.prevs.append(new_prev)
-        try :
-            prev = placemark.prevs[0]
-        except IndexError :
+        if len(placemark.prevs) < samples :
             return
         if len(placemark.prevs) > samples :
             placemark.prevs = placemark.prevs[1:]
+        prev = placemark.prevs[0]
         delta_t = self.timestamp - prev.timestamp
         if delta_t > 2 :
             delta_lat, delta_long = self.latitude - prev.latitude, self.longitude - prev.longitude
@@ -91,10 +90,11 @@ class placemark(object) :
             self.cspeed = 3600 * self.delta_s / float(self.delta_t)
             
 
-    def __str__(self) :
-        return ','.join([ self.to_str(f) for f in placemark.all_fields ])
+    def to_str(self, delta) :
+        fields = placemark.all_fields if delta else placemark.base_fields
+        return ','.join([ self.field_to_str(f) for f in fields ])
 
-    def to_str(self, field) :
+    def field_to_str(self, field) :
         result = ''
         value = getattr(self, field, None)
         if value is not None :
@@ -105,10 +105,9 @@ class placemark(object) :
                 result = str(value)
         return result
             
-
     @staticmethod
     def tags(delta) :
-        return ','.join(placemark.all_fields if delta else placemark.fields)
+        return ','.join(placemark.all_fields if delta else placemark.base_fields)
             
 
 def get_named_element(elem, tag, name) :
@@ -145,7 +144,7 @@ def make_csv(outfile, root, args) :
             p = placemark(pm)
             if prev :
                 p.do_delta(prev, args.sample)
-            f.write(str(p)+'\n')
+            f.write(p.to_str(args.delta)+'\n')
             prev = p
 
 class parse_args(object) :
